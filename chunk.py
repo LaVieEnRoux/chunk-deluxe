@@ -43,11 +43,16 @@ def perc_train(train_data, tagset, numepochs):
     # set default tag to "NP"
     default_tag = "B-NP"
 
+    initialDelta = 1
+    decayRate = 0.8
+
     aveWeights = defaultdict(int)
 
     # iterate through epochs
     for epoch in range(numepochs):
         errorNum = 0
+
+        delta = initialDelta * (decayRate ** epoch)
 
         # iterate through all sentences
         for jj, sentence_data in enumerate(train_data):
@@ -76,16 +81,16 @@ def perc_train(train_data, tagset, numepochs):
 
                     # shift weights for correct/incorrect tags
                     for f in wordFeats[:-1]:
-                        feat_vec[f, true[i]] += 1
-                        feat_vec[f, pred[i]] -= 1
+                        feat_vec[f, true[i]] += delta
+                        feat_vec[f, pred[i]] -= delta
 
                     # update bigram feature weight too
                     if i == 0:
-                        feat_vec["B:B_-1", true[i]] += 1
-                        feat_vec["B:B_-1", pred[i]] -= 1
+                        feat_vec["B:B_-1", true[i]] += delta
+                        feat_vec["B:B_-1", pred[i]] -= delta
                     else:
-                        feat_vec["B:" + true[i - 1], true[i]] += 1
-                        feat_vec["B:" + pred[i - 1], pred[i]] -= 1
+                        feat_vec["B:" + true[i - 1], true[i]] += delta
+                        feat_vec["B:" + pred[i - 1], pred[i]] -= delta
 
             # update all weights for averaged output
             for k in feat_vec.iterkeys():
@@ -118,7 +123,7 @@ if __name__ == '__main__':
                          default=os.path.join("data", "train.feats.gz"),
                          help="precomputed features for the input data, i.e. the values of \phi(x,_) without y")
     optparser.add_option("-e", "--numepochs",
-                         dest="numepochs", default=int(10),
+                         dest="numepochs", default=int(11),
                          help="number of epochs of training; in each epoch we iterate over over all the training examples")
     optparser.add_option("-m", "--modelfile",
                          dest="modelfile",
