@@ -34,9 +34,11 @@ Inside the perceptron training loop:
 import perc
 import sys, optparse, os
 from collections import defaultdict
+import numpy as np
+import subprocess
 
+def perc_train(train_data, tagset, numepochs, model_file, batch_size=10):
 
-def perc_train(train_data, tagset, numepochs):
     feat_vec = defaultdict(int)
     # please limit the number of iterations of training to n iterations
 
@@ -45,67 +47,96 @@ def perc_train(train_data, tagset, numepochs):
 
     initialDelta = 1
     decayRate = 0.8
-
-    aveWeights = defaultdict(int)
+    prev_acc = 0.0
+    iter_counter = 0
 
     # iterate through epochs
     for epoch in range(numepochs):
-        errorNum = 0
-
+        
         delta = initialDelta * (decayRate ** epoch)
 
-        # iterate through all sentences
-        for jj, sentence_data in enumerate(train_data):
+        # iterate through minibatches
+        for start_pos in range(0, len(train_data), batch_size):
 
-            labeled_list = sentence_data[0]
-            feat_list = sentence_data[1]
+            # define minibatch indices
+            end_pos = start_pos+batch_size
+            batch_ids = range(start_pos, end_pos) if end_pos < len(train_data) else range(start_pos, len(train_data)) + range(end_pos-len(train_data))
+            np.random.shuffle(batch_ids)
+            batch_data = [train_data[i] for i in batch_ids]
 
-            # grab predicted tag based on current feat_vec
-            pred = perc.perc_test(feat_vec, labeled_list, feat_list, tagset,
-                                  default_tag)
+            # define weights for minibatch
+            b_w = defaultdict(int)
 
-            # check if tag is correct
-            true = [s.split()[-1] for s in labeled_list]
-            comparisons = [t == p for t, p in zip(true, pred)]
+            # reset error counter
+            errorNum = 0
 
-            feat_index = 0
+	        # iterate through sentences in minibatch
+            for sentence_data in batch_data:
 
-            # if tag is not correct, update weights
-            for i, word in enumerate(labeled_list):
-                (feat_index, wordFeats) = \
-                    perc.feats_for_word(feat_index, feat_list)
+                labeled_list = sentence_data[0]
+                feat_list = sentence_data[1]
 
-                if comparisons[i] is False:
+                # grab predicted tag based on current feat_vec
+                pred = perc.perc_test(feat_vec, labeled_list, feat_list, tagset,
+	                                  default_tag)
 
-                    errorNum += 1
+	            # check if tag is correct
+                true = [s.split()[-1] for s in labeled_list]
+                comparisons = [t == p for t, p in zip(true, pred)]
+                feat_index = 0
 
-                    # shift weights for correct/incorrect tags
-                    for f in wordFeats[:-1]:
-                        feat_vec[f, true[i]] += delta
-                        feat_vec[f, pred[i]] -= delta
+                # if tag is not correct, update weights
+                for i, word in enumerate(labeled_list):
 
-                    # update bigram feature weight too
-                    if i == 0:
-                        feat_vec["B:B_-1", true[i]] += delta
-                        feat_vec["B:B_-1", pred[i]] -= delta
-                    else:
-                        feat_vec["B:" + true[i - 1], true[i]] += delta
-                        feat_vec["B:" + pred[i - 1], pred[i]] -= delta
+                    (feat_index, wordFeats) = \
+                        perc.feats_for_word(feat_index, feat_list)
 
-            # update all weights for averaged output
-            for k in feat_vec.iterkeys():
-                aveWeights[k] += feat_vec[k]
+                    if comparisons[i] is False:
 
-        print >>sys.stderr, "Errors at epoch {}: {}".format(epoch, errorNum)
+                        errorNum += 1
 
-    # normalize averaged weights
-    print >>sys.stderr, "Averaging weights..."
-    for k in aveWeights.iterkeys():
-        aveWeights[k] = float(aveWeights[k]) / float((numepochs *
-                                                      len(train_data)))
-    print >>sys.stderr, "Done averaging"
+                        # shift weights for correct/incorrect tags
+                        for f in wordFeats[:-1]:
+                            b_w[f, true[i]] += delta
+                            b_w[f, pred[i]] -= delta
 
-    return aveWeights
+                        # update bigram feature weight too
+                        if i == 0:
+                            b_w["B:B_-1", true[i]] += delta
+                            b_w["B:B_-1", pred[i]] -= delta
+                        else:
+                            b_w["B:" + true[i - 1], true[i]] += delta
+                            b_w["B:" + pred[i - 1], pred[i]] -= delta
+
+            # update all weights
+            for k in b_w.iterkeys():
+                feat_vec[k] += float(b_w[k])/float(batch_size)
+
+            # Perform Validation
+            if iter_counter % 50 == 0:
+                print >>sys.stderr, "\nIter: " + str(iter_counter) + " Epoch: " + str(epoch)
+                prev_acc = validate_model(feat_vec, model_file, prev_acc)
+            iter_counter+=1
+
+            #print >>sys.stderr, "Errors at epoch {}: {}".format(epoch, errorNum)
+
+    return feat_vec
+
+def validate_model(feat_vec, model_file, prev_acc):
+
+    print >>sys.stderr, "********* Validating Model **********"
+    perc.perc_write_to_file(feat_vec, "data/aux.model")
+    subprocess.check_output("python perc.py -m data/aux.model > output", shell=True)
+    out = subprocess.check_output("python score-chunks.py -t output | grep -w 'Score'", shell=True)
+    acc = float(out.split(" ")[1])
+
+    # Save best model
+    if acc > prev_acc:
+        print >>sys.stderr, "New Model Found\nValidation Score: " + str(acc)
+        subprocess.check_output("cp data/aux.model "+ model_file.split(".")[0] +"_best.model", shell=True)
+        return acc
+    return prev_acc
+
 
 if __name__ == '__main__':
     optparser = optparse.OptionParser()
@@ -141,6 +172,7 @@ if __name__ == '__main__':
     print >>sys.stderr, "reading data ..."
     train_data = perc.read_labeled_data(opts.trainfile, opts.featfile)
     print >>sys.stderr, "done."
-    feat_vec = perc_train(train_data, tagset, int(opts.numepochs))
-    perc.perc_write_to_file(feat_vec, opts.modelfile)
+
+    # Start Training
+    perc_train(train_data, tagset, 20, opts.modelfile)#int(opts.numepochs))
 
