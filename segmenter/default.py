@@ -1,82 +1,43 @@
-"""
 
-You have to write the perc_train function that trains the feature weights using the perceptron algorithm for the CoNLL 2000 chunking task.
+import sys, codecs, optparse, os
 
-Each element of train_data is a (labeled_list, feat_list) pair. 
+optparser = optparse.OptionParser()
+optparser.add_option("-c", "--unigramcounts", dest='counts1w', default=os.path.join('data', 'count_1w.txt'), help="unigram counts")
+optparser.add_option("-b", "--bigramcounts", dest='counts2w', default=os.path.join('data', 'count_2w.txt'), help="bigram counts")
+optparser.add_option("-i", "--inputfile", dest="input", default=os.path.join('data', 'input'), help="input file to segment")
+(opts, _) = optparser.parse_args()
 
-Inside the perceptron training loop:
+class Pdist(dict):
+    "A probability distribution estimated from counts in datafile."
 
-    - Call perc_test to get the tagging based on the current feat_vec and compare it with the true output from the labeled_list
+    def __init__(self, filename, sep='\t', N=None, missingfn=None):
+        self.maxlen = 0 
+        for line in file(filename):
+            (key, freq) = line.split(sep)
+            try:
+                utf8key = unicode(key, 'utf-8')
+            except:
+                raise ValueError("Unexpected error %s" % (sys.exc_info()[0]))
+            self[utf8key] = self.get(utf8key, 0) + int(freq)
+            self.maxlen = max(len(utf8key), self.maxlen)
+        self.N = float(N or sum(self.itervalues()))
+        self.missingfn = missingfn or (lambda k, N: 1./N)
 
-    - If the output is incorrect then we have to update feat_vec (the weight vector)
+    def __call__(self, key):
+        if key in self: return float(self[key])/float(self.N)
+        #else: return self.missingfn(key, self.N)
+        elif len(key) == 1: return self.missingfn(key, self.N)
+        else: return None
 
-    - In the notation used in the paper we have w = w_0, w_1, ..., w_n corresponding to \phi_0(x,y), \phi_1(x,y), ..., \phi_n(x,y)
+# the default segmenter does not use any probabilities, but you could ...
+Pw  = Pdist(opts.counts1w)
 
-    - Instead of indexing each feature with an integer we index each feature using a string we called feature_id
-
-    - The feature_id is constructed using the elements of feat_list (which correspond to x above) combined with the output tag (which correspond to y above)
-
-    - The function perc_test shows how the feature_id is constructed for each word in the input, including the bigram feature "B:" which is a special case
-
-    - feat_vec[feature_id] is the weight associated with feature_id
-
-    - This dictionary lookup lets us implement a sparse vector dot product where any feature_id not used in a particular example does not participate in the dot product
-
-    - To save space and time make sure you do not store zero values in the
-      feat_vec dictionary which can happen if
-      \phi(x_i,y_i) - \phi(x_i,y_{perc_test}) results in a zero value
-
-    - If you are going word by word to check if the predicted tag is equal to the true tag,
-      there is a corner case where the bigram 'T_{i-1} T_i' is incorrect even though T_i is correct.
-
-"""
-
-import perc
-import sys, optparse, os
-from collections import defaultdict
-
-def perc_train(train_data, tagset, numepochs):
-    feat_vec = defaultdict(int)
-    # please limit the number of iterations of training to n iterations
-
-    for i in train_data[0][1]:
-        print i
-    return feat_vec
-
-if __name__ == '__main__':
-    optparser = optparse.OptionParser()
-    optparser.add_option("-t", "--tagsetfile",
-                         dest="tagsetfile",
-                         default=os.path.join("data", "tagset.txt"),
-                         help="tagset that contains all the labels "
-                         + "produced in the output, i.e. the y in \phi(x,y)")
-    optparser.add_option("-i", "--trainfile", 
-                         dest="trainfile",
-                         default=os.path.join("data", "train.txt.gz"),
-                         help="input data, i.e. the x in \phi(x,y)")
-    optparser.add_option("-f", "--featfile",
-                         dest="featfile",
-                         default=os.path.join("data", "train.feats.gz"),
-                         help="precomputed features for the input data, i.e. the values of \phi(x,_) without y")
-    optparser.add_option("-e", "--numepochs",
-                         dest="numepochs", default=int(10),
-                         help="number of epochs of training; in each epoch we iterate over over all the training examples")
-    optparser.add_option("-m", "--modelfile",
-                         dest="modelfile",
-                         default=os.path.join("data", "default.model"),
-                         help="weights for all features stored on disk")
-    (opts, _) = optparser.parse_args()
-
-    # each element in the feat_vec dictionary is:
-    # key=feature_id value=weight
-    feat_vec = {}
-    tagset = []
-    train_data = []
-
-    tagset = perc.read_tagset(opts.tagsetfile)
-    print >>sys.stderr, "reading data ..."
-    train_data = perc.read_labeled_data(opts.trainfile, opts.featfile)
-    print >>sys.stderr, "done."
-    feat_vec = perc_train(train_data, tagset, int(opts.numepochs))
-    perc.perc_write_to_file(feat_vec, opts.modelfile)
-
+old = sys.stdout
+sys.stdout = codecs.lookup('utf-8')[-1](sys.stdout)
+# ignoring the dictionary provided in opts.counts
+with open(opts.input) as f:
+    for line in f:
+        utf8line = unicode(line.strip(), 'utf-8')
+        output = [i for i in utf8line]  # segmentation is one word per character in the input
+        print " ".join(output)
+sys.stdout = old

@@ -1,0 +1,236 @@
+
+import sys, codecs, optparse, os
+import heapq, math
+
+optparser = optparse.OptionParser()
+optparser.add_option("-c", "--unigramcounts", dest='counts1w', default=os.path.join('data', 'count_1w.txt'), help="unigram counts")
+optparser.add_option("-b", "--bigramcounts", dest='counts2w', default=os.path.join('data', 'count_2w.txt'), help="bigram counts")
+optparser.add_option("-i", "--inputfile", dest="input", default=os.path.join('data', 'input'), help="input file to segment")
+(opts, _) = optparser.parse_args()
+
+# just configure the path to the count files here
+unigramPath = "./data/count_1w.txt"
+bigramPath = "./data/count_2w.txt"
+
+alpha = 0.0000000000001
+
+
+class wordProbs(dict):
+    '''
+    This class stores a hierarchical dictionary, each entry is a list that
+    represents a word, w. The first entry of the list is the unigram
+    probability of w occurring, and the second entry is a
+    dictionary whose keys are words that come AFTER w in the bigram
+    data. The values are the conditional probabilities of w occurring before
+    the other word.
+
+    TODO: figure out what to do about missing words
+
+    Convoluted? Maybe!
+
+    Mildly adapted from Dr. Sarkar's default version.
+    '''
+
+    def __init__(self, unigramFile, bigramFile, countSep='\t', wordSep=' '):
+
+        self.maxlen = 0
+
+        # parse unigram information first
+        for uni in file(unigramFile):
+            (word, wordCount) = uni.split(countSep)
+            utf8key = unicode(word, 'utf-8')
+            self[utf8key] = [self.get(utf8key, [0, {}])[0] + int(wordCount),
+                             self.get(utf8key, [0, {}])[1]]
+            self.maxlen = max(len(utf8key), self.maxlen)
+        self.N = float(sum([i[0] for i in self.itervalues()]))
+        for word in self.iterkeys():
+            self[word][0] = self[word][0] / self.N
+
+        # don't forget about sentence beginnings!
+        self["<S>"] = [0, {}]
+
+        # parse bigram information, this one may be a bit trickier
+        self.bgN = 0
+        for uni in file(bigramFile):
+            (words, bgCount) = uni.split(countSep)
+            (word1, word2) = words.split(wordSep)
+            key1, key2 = unicode(word1, 'utf-8'), unicode(word2, 'utf-8')
+
+            # special case to find occurrences of <S>
+            if word1 == "<S>":
+                self["<S>"][0] += int(bgCount)
+
+            # add bigram info for key2 occurring after key1
+            self[key1][1][key2] = self[key1][1].get(key2, 0) + int(bgCount)
+            self.bgN += int(bgCount)
+
+        # correct to probability
+        self["<S>"][0] /= float(self.bgN)
+
+        # change counts to conditional probabilities
+        for word1 in self.iterkeys():
+            bigramDict = self[word1][1]
+            for word2 in bigramDict.iterkeys():
+                bigramDict[word2] /= float(self.bgN) * self[word1][0]
+
+        # calculate log probabilities of any given length of word
+        self.lenProbs = [0] * self.maxlen
+        for k in self.iterkeys():
+            if k != "<S>":
+                self.lenProbs[len(k) - 1] += self[k][0]
+        # self.lenProbs = map(logProb, self.lenProbs)
+
+    def uni_prob(self, word):
+        '''
+        Returns the unigram probability for the given word
+        '''
+        try:
+            return logProb(self[word][0])
+        except KeyError:
+            if len(word) <= 2:
+                return logProb(self.lenProbs[len(word)] / self.N * alpha)
+            else:
+                return logProb(0)
+
+
+def logProb(prob):
+    '''
+    temporary workaround to logging zero probabilities
+    '''
+    if prob > 0:
+        return math.log(prob)
+    else:
+        return -sys.float_info.max
+
+
+def isNotInHeap(heap, item):
+
+    isNotIn = True
+    for pos, h in enumerate(heap):
+        if h[0] > item[0] and h[1][0] == item[1][0] and h[1][1] == item[1][1]:
+            heap.pop(pos)
+            isNotIn = True
+            print "YE"
+
+    for h in heap:
+        if h[0] <= item[0] and h[1][0] == item[1][0] and h[1][1] == item[1][1]:
+            isNotIn = False
+    heapq.heapify(heap)
+
+    return isNotIn 
+
+def equal(item1, item2):
+    """
+    Check if item1 and item2 are equal taking into consideration the log-probability, word and start-position
+    """
+    return True if item1[0] == item2[0] and item1[1][0] == item2[1][0] and item1[1][1] == item2[1][1] else False
+
+def removeDuplicate(items):
+    newItems = []
+    for i1 in items:
+        isEqual = [True if equal(i1, i2) else False for i2 in newItems]
+        if True not in isEqual:
+            newItems.append(i1)
+        # else:
+        #     print "FOUND DUPLICATE"
+    return newItems
+
+def unfoldEntries(entry):
+    backPointer = entry[1][2]
+    if backPointer != -1:
+        return unfoldEntries(backPointer) + [entry[1][0]]
+    return [entry[1][0]]
+
+def unigramSegment(sequence, wordProbs):
+    
+    # Init Heap
+    heap = []
+    usequence = unicode(sequence, 'utf-8')
+    items = []
+    #items = [(-wordProbs.uni_prob(word), (word, 0, -1)) for word in wordProbs.keys() + [usequence[0]] if usequence.startswith(word)]
+
+    for i in range(wordProbs.maxlen / 2):
+        items.append((-wordProbs.uni_prob(usequence[0:i + 1]), 
+                      (usequence[0:i + 1], 0, -1)))
+        # print "appending: " + usequence[0: i + 1]
+        
+    itemsUnique = removeDuplicate(items)
+    itemsFiltered = filter(lambda i:isNotInHeap(heap, i), itemsUnique)
+    map(lambda i:heapq.heappush(heap, i), itemsFiltered)
+
+    # print heap
+
+    # Iteratively fill in chart
+    N = len(usequence)
+    chart = N*[()] 
+    while len(heap) > 0:
+
+        #print
+        #print "New step!"
+        #print
+
+        #print "Full sequence: " + usequence
+        #print
+
+        #print len(heap)
+        # entry: (log-probability, (word, start_position, back-pointer))
+        entry = heapq.heappop(heap)
+        endindex = entry[1][1] + len(entry[1][0]) - 1 
+        preventry = chart[endindex]
+
+        if preventry is not () and preventry[0] < entry[0]:
+            continue
+
+        #print "End Index: {}".format(endindex)
+        #print "Total length: {}".format(len(usequence))
+
+        # Check if preventry exists
+        chart[endindex] = preventry if len(preventry) and entry[0] > preventry[0] else entry
+        
+        # Add new entries
+        nextChar = [usequence[endindex+1]] if endindex + 1 < N else []
+        newItems = []
+        #newItems = [(entry[0] - wordProbs.uni_prob(newWord), 
+        #            (newWord, endindex + 1, entry)) 
+        #            for newWord in wordProbs.keys() + nextChar
+        #            if usequence[endindex + 1:].startswith(newWord)]
+
+        
+        # messing around
+        if len(usequence) - wordProbs.maxlen > endindex:
+            lenToCheck = wordProbs.maxlen / 2
+        else:
+            lenToCheck = len(usequence) - endindex - 1
+
+        for i in range(lenToCheck):
+                lowInd = endindex + 1
+                highInd = endindex + 2 + i
+                newItems.append((entry[0] - wordProbs.uni_prob(usequence[lowInd: highInd]),
+                                 (usequence[lowInd: highInd], lowInd, entry)))
+                #print "Adding this word to heap: " + usequence[lowInd: highInd]
+        
+
+        newItemsUnique = removeDuplicate(newItems)
+        # newItemsFiltered = filter(lambda i:isNotInHeap(heap, i), newItemsUnique)
+        # map(lambda i:heapq.heappush(heap, i), newItemsFiltered)
+        map(lambda i: heapq.heappush(heap, i), newItemsUnique)
+
+    finalEntry = chart[-1]
+    if len(finalEntry): 
+        print " ".join(unfoldEntries(finalEntry))
+    else:
+        print "skipped!" 
+    return
+
+if __name__ == "__main__":
+    wp = wordProbs(unigramPath, bigramPath)
+
+    old = sys.stdout
+    sys.stdout = codecs.lookup('utf-8')[-1](sys.stdout)
+
+    # Initialize Heap
+    with open(opts.input) as f:
+        
+        [unigramSegment(line.strip('\n'), wp) for line in f]
+
+    sys.stdout = old
