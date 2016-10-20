@@ -1,0 +1,7 @@
+# chunk-deluxe
+
+commit 59f1256e40b76af2a1f6d9a8ca8fe8a6d695b46a
+Author: Nelson <ennauata@gmail.com>
+Date:   Tue Oct 11 14:54:52 2016 -0700
+
+    Mini-batched and Early Stopping added

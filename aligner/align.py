@@ -1,0 +1,109 @@
+#!/usr/bin/env python
+import optparse, sys, os, logging
+from collections import defaultdict
+import numpy as np
+import itertools
+
+def parse_params():
+  optparser = optparse.OptionParser()
+  optparser.add_option("-d", "--datadir", dest="datadir", default="data", help="data directory (default=data)")
+  optparser.add_option("-p", "--prefix", dest="fileprefix", default="hansards", help="prefix of parallel data files (default=hansards)")
+  optparser.add_option("-e", "--english", dest="english", default="en", help="suffix of English (target language) filename (default=en)")
+  optparser.add_option("-f", "--french", dest="french", default="fr", help="suffix of French (source language) filename (default=fr)")
+  optparser.add_option("-l", "--logfile", dest="logfile", default=None, help="filename for logging output")
+  optparser.add_option("-t", "--threshold", dest="threshold", default=0.5, type="float", help="threshold for alignment (default=0.5)")
+  optparser.add_option("-n", "--num_sentences", dest="num_sents", default=sys.maxint, type="int", help="Number of sentences to use for training and alignment")
+  (opts, _) = optparser.parse_args()
+  f_data = "%s.%s" % (os.path.join(opts.datadir, opts.fileprefix), opts.french)
+  e_data = "%s.%s" % (os.path.join(opts.datadir, opts.fileprefix), opts.english)
+
+  if opts.logfile:
+    logging.basicConfig(filename=opts.logfile, filemode='w', level=logging.INFO)
+  return opts, f_data, e_data
+
+def get_bitext(f_data, e_data, opts):
+  return [[sentence.strip().split() for sentence in pair] for pair in zip(open(f_data), open(e_data))[:opts.num_sents]]
+
+def EM(bitext):
+  
+  # French vocabulary size
+  V_f = []
+  [V_f.extend(f) for (f, e) in bitext]
+  Vf_size = len(set(V_f))
+
+  # Init t_k 
+  t_k = defaultdict(lambda:1.0/Vf_size)
+  iters = 5
+
+  # Repeat until convergence
+  for k in range(1, iters+1):
+    
+    # Init all counts to zero
+    e_count = defaultdict(int)
+    fe_count = defaultdict(int)
+    sys.stderr.write("\nEpoch %i \n" % (k))
+
+    # For each (f,e) in D
+    for (n, (f, e)) in enumerate(bitext):
+
+      # For each f_i in f
+      for f_i in set(f):
+        
+        # Normalization term
+        Z = np.sum(t_k[(f_i, e_j)] for e_j in set(e))
+
+        # For each e_j in e
+        for e_j in set(e):
+          c = t_k[(f_i, e_j)]/Z
+          fe_count[(f_i, e_j)] += c
+          e_count[e_j] += c
+
+      if n % 1000 == 0:
+        sys.stderr.write(".")
+
+    # Set new parameters t_k
+    for (f, e) in fe_count.keys():
+      t_k[(f, e)] = fe_count[(f, e)]/e_count[e]
+
+  # Decoding the best alignment
+  sys.stderr.write("\nDecoding ... \n")
+  for (f, e) in bitext:
+    for (i, f_i) in enumerate(f):
+
+      bestp = 0
+      bestj = 0
+      for (j, e_j) in enumerate(e):
+        if t_k[(f_i, e_j)] > bestp:
+          bestp = t_k[(f_i, e_j)]
+          bestj = j
+
+      # Print alignment
+      sys.stdout.write("%i-%i " % (i, bestj))
+    sys.stdout.write("\n")
+  return 
+
+def print_output(bitext, dice):
+  for (f, e) in bitext:
+    for (i, f_i) in enumerate(f): 
+      for (j, e_j) in enumerate(e):
+        if dice[(f_i,e_j)] >= opts.threshold:
+          sys.stdout.write("%i-%i " % (i,j))
+    sys.stdout.write("\n")
+  return
+
+def align(bitext):
+
+  # Start training
+  sys.stderr.write("Training with EM ... \n")
+  EM(bitext)
+
+  return
+
+if __name__ == '__main__':
+
+  # Parse parameters
+  opts, f_data, e_data = parse_params()
+  bitext = get_bitext(f_data, e_data, opts)
+
+  # Align french and english sentences
+  align(bitext)
