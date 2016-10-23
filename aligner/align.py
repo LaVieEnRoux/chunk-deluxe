@@ -33,8 +33,7 @@ def EM(bitext):
   [V_f.extend(f) for (f, e) in bitext]
   Vf_size = len(set(V_f))
 
-  nullWeight = 1 / Vf_size + 0.15
-  print nullWeight
+  nullWeight = 1. / Vf_size + 0.15
 
   # Init t_k and initialize variables for better initialization
   t_k = defaultdict(lambda:1.0/Vf_size)
