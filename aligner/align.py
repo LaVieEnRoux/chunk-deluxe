@@ -4,6 +4,7 @@ from collections import defaultdict
 import numpy as np
 import itertools
 
+
 def parse_params():
   optparser = optparse.OptionParser()
   optparser.add_option("-d", "--datadir", dest="datadir", default="data", help="data directory (default=data)")
@@ -24,6 +25,7 @@ def parse_params():
 def get_bitext(f_data, e_data, opts):
   return [[sentence.strip().split() for sentence in pair] for pair in zip(open(f_data), open(e_data))[:opts.num_sents]]
 
+
 def EM(bitext):
   
   # French vocabulary size
@@ -31,9 +33,28 @@ def EM(bitext):
   [V_f.extend(f) for (f, e) in bitext]
   Vf_size = len(set(V_f))
 
-  # Init t_k 
+  nullWeight = 1 / Vf_size + 0.15
+  print nullWeight
+
+  # Init t_k and initialize variables for better initialization
   t_k = defaultdict(lambda:1.0/Vf_size)
+  fe_num = defaultdict(int)
+  f_num = defaultdict(int)
+  total_f = 0
+  total_fe = 0
   iters = 5
+
+  '''
+  for (n, (f, e)) in enumerate(bitext):
+    for f_i in set(f):
+      if f_i not in f_num:
+        total_f += 1
+      f_num[f_i] += 1
+
+      for e_j in set(e):
+          if (f_i, e_j) not in fe_num:
+            total_fe += 1
+  '''
 
   # Repeat until convergence
   for k in range(1, iters+1):
@@ -63,7 +84,7 @@ def EM(bitext):
 
     # Set new parameters t_k
     for (f, e) in fe_count.keys():
-      t_k[(f, e)] = fe_count[(f, e)]/e_count[e]
+      t_k[(f, e)] = (fe_count[(f, e)]) / (e_count[e])
 
   # Decoding the best alignment
   sys.stderr.write("\nDecoding ... \n")
@@ -72,13 +93,18 @@ def EM(bitext):
 
       bestp = 0
       bestj = 0
+      beste = None
       for (j, e_j) in enumerate(e):
         if t_k[(f_i, e_j)] > bestp:
           bestp = t_k[(f_i, e_j)]
           bestj = j
-
-      # Print alignment
-      sys.stdout.write("%i-%i " % (i, bestj))
+          beste = e_j
+      if nullWeight > bestp:
+        # align with null
+        continue
+      else:
+        # Print alignment
+        sys.stdout.write("%i-%i " % (i, bestj))
     sys.stdout.write("\n")
   return 
 
