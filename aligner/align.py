@@ -95,11 +95,15 @@ def EM(bitext):
     e_prob = e_num[e_j] / float(Ve_total)
     fe_prob = fe_num[(f_i, e_j)]
 
+    '''
     if fe_prob > (f_prob * e_prob):
       llr = fe_num[(f_i, e_j)] * fe_prob / (f_prob * e_prob)
       t_k[(f_i, e_j)] = llr / float(largest)
     else:
       t_k[(f_i, e_j)] /= float(largest)
+    '''
+    llr = fe_num[(f_i, e_j)] * fe_prob / (f_prob * e_prob)
+    t_k[(f_i, e_j)] = llr / float(largest)
 
   sys.stderr.write("Done renormalizing\n")
  
