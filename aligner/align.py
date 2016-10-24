@@ -88,9 +88,11 @@ def EM(bitext):
         t_k[(f_i, e_j)] = llr
         llr_sum += llr
       '''
-      if llr > 0:
+      if llr > llr_thresh:
         t_k[(f_i, e_j)] = llr
         llr_sum += llr
+      else:
+        llr_sum += t_k[(f_i, e_j)]
 
     largest = max(llr_sum, largest)
 
@@ -98,7 +100,11 @@ def EM(bitext):
   for (f_i, e_j) in t_k.iterkeys():
     t_k[(f_i, e_j)] /= float(largest)
   sys.stderr.write("Done renormalizing\n")
-  
+ 
+  # clear memory
+  f_num.clear()
+  fe_num.clear()
+  e_num.clear()
 
   # Repeat until convergence
   for k in range(1, iters+1):
