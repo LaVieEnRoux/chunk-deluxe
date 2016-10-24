@@ -40,6 +40,7 @@ def EM(bitext):
 
   nullWeight = 1. / Vf_size + 0.15
   # nullWeight = 0
+  llr_thresh = 0.2
 
   # Init t_k and initialize variables for better initialization
   t_k = defaultdict(lambda:1.0/Vf_size)
