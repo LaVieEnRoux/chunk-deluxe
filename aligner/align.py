@@ -26,6 +26,11 @@ def get_bitext(f_data, e_data, opts):
   return [[sentence.strip().split() for sentence in pair] for pair in zip(open(f_data), open(e_data))[:opts.num_sents]]
 
 
+def myLog(x):
+  x = np.clip(x, 10E-12, 10E12)
+  return np.log(x)
+
+
 def EM(bitext):
   
   # French vocabulary size
@@ -39,6 +44,8 @@ def EM(bitext):
   [V_e.extend(e) for (f, e) in bitext]
   Ve_size = len(set(V_e))
   Ve_total = len(V_e)
+
+  sentenceNum = len(bitext)
 
   nullWeight = 1. / Vf_size + 0.15
   # nullWeight = 0
@@ -75,21 +82,37 @@ def EM(bitext):
       sys.stderr.write("Word: {} / {}\n".format(ii, Ve_size))
     ii += 1
 
-    e_prob = e_num[e_j] / float(Ve_total)
+    e_prob = e_num[e_j] / float(sentenceNum)
     llr_sum = 0
 
     for f_i in f_num.iterkeys():
       if (f_i, e_j) in fe_num:
-        f_prob = f_num[f_i] / float(Vf_total)
-        fe_prob = fe_num[(f_i, e_j)] / float(total_fe)
+        f_prob = f_num[f_i] / float(sentenceNum)
+        fe_prob = fe_num[(f_i, e_j)] / float(sentenceNum)
 
-        llr = fe_num[(f_i, e_j)] * np.log(fe_prob / (f_prob * e_prob))
+        # sum across t/s variables as in the paper
+        # sys.stderr.write("Probs: {}, {}, {}".format(f_prob, e_prob, fe_prob))
+        llr_f_e = fe_num[(f_i, e_j)] * myLog(fe_prob / (f_prob * e_prob))
+        llr_nf_e = (e_num[e_j] - fe_num[(f_i, e_j)]) \
+          * myLog((e_prob - fe_prob) / ((1 - f_prob) * e_prob))
+        llr_f_ne = (f_num[f_i] - fe_num[(f_i, e_j)]) \
+          * myLog((f_prob - fe_prob) / ((1 - e_prob) * f_prob))
+        llr_nf_ne = (sentenceNum - fe_num[(f_i, e_j)]) \
+          * myLog((1 - fe_prob) / ((1 - e_prob) * (1 - f_prob)))
+
+        llr = llr_f_e + llr_nf_e + llr_f_ne + llr_nf_ne
+
+        t_k[(f_i, e_j)] = llr
 
         llr_sum += llr
 
     largest = max(llr_sum, largest)
 
   # set llr and normalize
+  for (f_i, e_j) in fe_num.iterkeys():
+    t_j[(f_i, e_j)] /= float(largest)
+
+  '''
   for (f_i, e_j) in fe_num.iterkeys():
     f_prob = f_num[f_i] / float(Vf_total)
     e_prob = e_num[e_j] / float(Ve_total)
@@ -101,6 +124,7 @@ def EM(bitext):
     else:
       # t_k[(f_i, e_j)] /= float(largest)
       t_k[(f_i, e_j)] = 0
+  '''
 
   sys.stderr.write("Done renormalizing\n")
  
