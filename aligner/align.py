@@ -33,27 +33,71 @@ def EM(bitext):
   [V_f.extend(f) for (f, e) in bitext]
   Vf_size = len(set(V_f))
 
+  # English vocab
+  V_e = []
+  [V_e.extend(e) for (f, e) in bitext]
+  Ve_size = len(set(V_e))
+
   nullWeight = 1. / Vf_size + 0.15
+  # nullWeight = 0
 
   # Init t_k and initialize variables for better initialization
   t_k = defaultdict(lambda:1.0/Vf_size)
   fe_num = defaultdict(int)
   f_num = defaultdict(int)
+  e_num = defaultdict(int)
   total_f = 0
   total_fe = 0
   iters = 5
 
-  '''
+  
+  # set up LLR
   for (n, (f, e)) in enumerate(bitext):
     for f_i in set(f):
-      if f_i not in f_num:
-        total_f += 1
       f_num[f_i] += 1
 
       for e_j in set(e):
           if (f_i, e_j) not in fe_num:
             total_fe += 1
-  '''
+          fe_num[(f_i, e_j)] += 1
+          e_num[e_j] += 1
+
+  # calculate LLR normalization term
+  # AND use LLR to initialize the t_k
+  sys.stderr.write("Renormalizing translation, probabilities...\n")
+  largest = 0
+  ii = 0
+  for e_j in e_num.iterkeys():
+
+    if ii % 200 == 0:
+      sys.stderr.write("Word: {} / {}\n".format(ii, Ve_size))
+    ii += 1
+
+    e_prob = e_num[e_j] / float(Ve_size)
+    llr_sum = 0
+
+    for f_i in f_num.iterkeys():
+      f_prob = f_num[f_i] / float(Vf_size)
+      fe_prob = fe_num[(f_i, e_j)] / float(total_fe)
+
+      llr = fe_num[(f_i, e_j)] * fe_prob / (f_prob * e_prob)
+
+      '''
+      if fe_prob > (f_prob * e_prob):
+        # positively associated
+        t_k[(f_i, e_j)] = llr
+        llr_sum += llr
+      '''
+      t_k[(f_i, e_j)] = llr
+      llr_sum += llr
+
+    largest = max(llr_sum, largest)
+
+  # renormalize t_k
+  for (f_i, e_j) in t_k.iterkeys():
+    t_k[(f_i, e_j)] /= float(largest)
+  sys.stderr.write("Done renormalizing\n")
+  
 
   # Repeat until convergence
   for k in range(1, iters+1):
