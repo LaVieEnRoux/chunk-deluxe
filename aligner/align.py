@@ -64,10 +64,6 @@ def EM(bitext):
           fe_num[(f_i, e_j)] += 1
           e_num[e_j] += 1
 
-  print len(f_num)
-  print len(e_num)
-  print len(fe_num)
-
   # calculate LLR normalization term
   # AND use LLR to initialize the t_k
   sys.stderr.write("Renormalizing translation, probabilities...\n")
