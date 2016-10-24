@@ -88,8 +88,9 @@ def EM(bitext):
         t_k[(f_i, e_j)] = llr
         llr_sum += llr
       '''
-      t_k[(f_i, e_j)] = llr
-      llr_sum += llr
+      if llr > 0:
+        t_k[(f_i, e_j)] = llr
+        llr_sum += llr
 
     largest = max(llr_sum, largest)
 
