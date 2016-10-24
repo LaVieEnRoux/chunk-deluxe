@@ -47,7 +47,7 @@ def EM(bitext):
 
   sentenceNum = len(bitext)
 
-  nullWeight = 1. / Vf_size + 0.15
+  nullWeight = 1. / Vf_size + 0.03
   # nullWeight = 0
 
   # Init t_k and initialize variables for better initialization
@@ -102,7 +102,8 @@ def EM(bitext):
 
         llr = llr_f_e + llr_nf_e + llr_f_ne + llr_nf_ne
 
-        t_k[(f_i, e_j)] = llr
+        if fe_prob > (f_prob * e_prob) and llr > 0.9:
+          t_k[(f_i, e_j)] = llr
 
         llr_sum += llr
 
@@ -110,7 +111,7 @@ def EM(bitext):
 
   # set llr and normalize
   for (f_i, e_j) in fe_num.iterkeys():
-    t_j[(f_i, e_j)] /= float(largest)
+    t_k[(f_i, e_j)] /= float(largest)
 
   '''
   for (f_i, e_j) in fe_num.iterkeys():
