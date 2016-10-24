@@ -93,7 +93,7 @@ def EM(bitext):
         t_k[(f_i, e_j)] = llr
         llr_sum += llr
       else:
-        llr_sum += t_k[(f_i, e_j)]
+        llr_sum += 1.0 / Vf_size
 
     largest = max(llr_sum, largest)
 
