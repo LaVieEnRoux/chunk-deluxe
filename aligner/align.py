@@ -32,15 +32,16 @@ def EM(bitext):
   V_f = []
   [V_f.extend(f) for (f, e) in bitext]
   Vf_size = len(set(V_f))
+  Vf_total = len(V_f)
 
   # English vocab
   V_e = []
   [V_e.extend(e) for (f, e) in bitext]
   Ve_size = len(set(V_e))
+  Ve_total = len(V_e)
 
   nullWeight = 1. / Vf_size + 0.15
   # nullWeight = 0
-  llr_thresh = 0.2
 
   # Init t_k and initialize variables for better initialization
   t_k = defaultdict(lambda:1.0/Vf_size)
@@ -74,32 +75,31 @@ def EM(bitext):
       sys.stderr.write("Word: {} / {}\n".format(ii, Ve_size))
     ii += 1
 
-    e_prob = e_num[e_j] / float(Ve_size)
+    e_prob = e_num[e_j] / float(Ve_total)
     llr_sum = 0
 
     for f_i in f_num.iterkeys():
-      f_prob = f_num[f_i] / float(Vf_size)
+      f_prob = f_num[f_i] / float(Vf_total)
       fe_prob = fe_num[(f_i, e_j)] / float(total_fe)
 
       llr = fe_num[(f_i, e_j)] * fe_prob / (f_prob * e_prob)
 
-      '''
-      if fe_prob > (f_prob * e_prob):
-        # positively associated
-        t_k[(f_i, e_j)] = llr
-        llr_sum += llr
-      '''
-      if llr > llr_thresh:
-        t_k[(f_i, e_j)] = llr
-        llr_sum += llr
-      else:
-        llr_sum += 1.0 / Vf_size
+      llr_sum += llr
 
     largest = max(llr_sum, largest)
 
-  # renormalize t_k
-  for (f_i, e_j) in t_k.iterkeys():
-    t_k[(f_i, e_j)] /= float(largest)
+  # set llr and normalize
+  for (f_i, e_j) in fe_num.iterkeys():
+    f_prob = f_num[f_i] / float(Vf_total)
+    e_prob = e_num[e_j] / float(Ve_total)
+    fe_prob = fe_num[(f_i, e_j)]
+
+    if fe_prob > (f_prob * e_prob):
+      llr = fe_num[(f_i, e_j)] * fe_prob / (f_prob * e_prob)
+      t_k[(f_i, e_j)] = llr / float(largest)
+    else:
+      t_k[(f_i, e_j)] /= float(largest)
+
   sys.stderr.write("Done renormalizing\n")
  
   # clear memory
