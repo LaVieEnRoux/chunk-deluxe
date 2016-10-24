@@ -64,6 +64,10 @@ def EM(bitext):
           fe_num[(f_i, e_j)] += 1
           e_num[e_j] += 1
 
+  print len(f_num)
+  print len(e_num)
+  print len(fe_num)
+
   # calculate LLR normalization term
   # AND use LLR to initialize the t_k
   sys.stderr.write("Renormalizing translation, probabilities...\n")
@@ -79,12 +83,13 @@ def EM(bitext):
     llr_sum = 0
 
     for f_i in f_num.iterkeys():
-      f_prob = f_num[f_i] / float(Vf_total)
-      fe_prob = fe_num[(f_i, e_j)] / float(total_fe)
+      if (f_i, e_j) in fe_num:
+        f_prob = f_num[f_i] / float(Vf_total)
+        fe_prob = fe_num[(f_i, e_j)] / float(total_fe)
 
-      llr = fe_num[(f_i, e_j)] * fe_prob / (f_prob * e_prob)
+        llr = fe_num[(f_i, e_j)] * fe_prob / (f_prob * e_prob)
 
-      llr_sum += llr
+        llr_sum += llr
 
     largest = max(llr_sum, largest)
 
