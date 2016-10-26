@@ -30,7 +30,7 @@ def myLog(x):
   x = np.clip(x, 10E-12, 10E12)
   return np.log(x)
 
-def LLR(bitext, Vf_size, Ve_size):
+def LLR(bitext, Vf_size, Ve_size, LLR_EXP):
 
   sentenceNum = len(bitext)
 
@@ -51,7 +51,9 @@ def LLR(bitext, Vf_size, Ve_size):
           if (f_i, e_j) not in fe_num:
             total_fe += 1
           fe_num[(f_i, e_j)] += 1
-          e_num[e_j] += 1
+
+    for e_i in set(e):
+      e_num[e_j] += 1
 
   # calculate LLR normalization term
   # AND use LLR to initialize the t_k
@@ -79,15 +81,17 @@ def LLR(bitext, Vf_size, Ve_size):
           * myLog((e_prob - fe_prob) / ((1 - f_prob) * e_prob))
         llr_f_ne = (f_num[f_i] - fe_num[(f_i, e_j)]) \
           * myLog((f_prob - fe_prob) / ((1 - e_prob) * f_prob))
-        llr_nf_ne = (sentenceNum - fe_num[(f_i, e_j)]) \
-          * myLog((1 - fe_prob) / ((1 - e_prob) * (1 - f_prob)))
+        llr_nf_ne = (sentenceNum - e_num[e_j] - f_num[f_i] + fe_num[(f_i, e_j)]) \
+          * myLog((1 - e_prob - f_prob + fe_prob) / ((1 - e_prob) * (1 - f_prob)))
 
         llr = llr_f_e + llr_nf_e + llr_f_ne + llr_nf_ne
+        llr = np.power(llr, LLR_EXP)
 
         if fe_prob > (f_prob * e_prob) and llr > 0.9:
           t_k[(f_i, e_j)] = llr
-
-        llr_sum += llr
+          llr_sum += llr
+        else:
+          llr_sum += 1.0 / Vf_size
 
     largest = max(llr_sum, largest)
 
@@ -119,15 +123,16 @@ def EM(bitext):
 
   # Define null probs
   nullWeight = 1. / Vf_size + 0.03
+  LLR_exp = 1.6
 
   # Initialize params
-  t_k = defaultdict(lambda:1.0/Vf_size)#LLR(bitext, Vf_size, Ve_size)
+  t_k = LLR(bitext, Vf_size, Ve_size, LLR_exp)
 
   # Init t_k and initialize variables for better initialization
   iters = 6
 
   # Init t_k backwards
-  t_k_b = defaultdict(lambda:1.0/Ve_size)
+  t_k_b = defaultdict(lambda:1.0 / Ve_size)
 
   # Repeat until convergence
   for k in range(1, iters+1):
