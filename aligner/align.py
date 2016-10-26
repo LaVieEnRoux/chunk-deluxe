@@ -3,7 +3,7 @@ import optparse, sys, os, logging
 from collections import defaultdict
 import numpy as np
 import itertools
-
+import os.path
 
 def parse_params():
   optparser = optparse.OptionParser()
@@ -30,36 +30,18 @@ def myLog(x):
   x = np.clip(x, 10E-12, 10E12)
   return np.log(x)
 
-
-def EM(bitext):
-  
-  # French vocabulary size
-  V_f = []
-  [V_f.extend(f) for (f, e) in bitext]
-  Vf_size = len(set(V_f))
-  Vf_total = len(V_f)
-
-  # English vocab
-  V_e = []
-  [V_e.extend(e) for (f, e) in bitext]
-  Ve_size = len(set(V_e))
-  Ve_total = len(V_e)
+def LLR(bitext, Vf_size, Ve_size):
 
   sentenceNum = len(bitext)
 
-  nullWeight = 1. / Vf_size + 0.03
-  # nullWeight = 0
-
-  # Init t_k and initialize variables for better initialization
+  # Initialize variable
+  total_f = 0
+  total_fe = 0
   t_k = defaultdict(lambda:1.0/Vf_size)
   fe_num = defaultdict(int)
   f_num = defaultdict(int)
   e_num = defaultdict(int)
-  total_f = 0
-  total_fe = 0
-  iters = 5
 
-  
   # set up LLR
   for (n, (f, e)) in enumerate(bitext):
     for f_i in set(f):
@@ -113,26 +95,39 @@ def EM(bitext):
   for (f_i, e_j) in fe_num.iterkeys():
     t_k[(f_i, e_j)] /= float(largest)
 
-  '''
-  for (f_i, e_j) in fe_num.iterkeys():
-    f_prob = f_num[f_i] / float(Vf_total)
-    e_prob = e_num[e_j] / float(Ve_total)
-    fe_prob = fe_num[(f_i, e_j)]
-
-    if fe_prob > (f_prob * e_prob):
-      llr = fe_num[(f_i, e_j)] * fe_prob / (f_prob * e_prob)
-      t_k[(f_i, e_j)] = llr / float(largest)
-    else:
-      # t_k[(f_i, e_j)] /= float(largest)
-      t_k[(f_i, e_j)] = 0
-  '''
-
   sys.stderr.write("Done renormalizing\n")
  
   # clear memory
   f_num.clear()
   fe_num.clear()
   e_num.clear()
+  return t_k
+
+def EM(bitext):
+  
+  # English vocabulary size
+  V_e = []
+  [V_e.extend(e) for (f, e) in bitext]
+  Ve_size = len(set(V_e))
+
+  # French vocabulary size
+  f_name_params = 'french_params.p' 
+  V_f = []
+  [V_f.extend(f) for (f, e) in bitext]
+  Vf_size = len(set(V_f))
+  Vf_total = len(V_f)
+
+  # Define null probs
+  nullWeight = 1. / Vf_size + 0.03
+
+  # Initialize params
+  t_k = defaultdict(lambda:1.0/Vf_size)#LLR(bitext, Vf_size, Ve_size)
+
+  # Init t_k and initialize variables for better initialization
+  iters = 6
+
+  # Init t_k backwards
+  t_k_b = defaultdict(lambda:1.0/Ve_size)
 
   # Repeat until convergence
   for k in range(1, iters+1):
@@ -140,12 +135,16 @@ def EM(bitext):
     # Init all counts to zero
     e_count = defaultdict(int)
     fe_count = defaultdict(int)
+
+    f_count = defaultdict(int)
+    ef_count = defaultdict(int)
+
     sys.stderr.write("\nEpoch %i \n" % (k))
 
     # For each (f,e) in D
     for (n, (f, e)) in enumerate(bitext):
 
-      # For each f_i in f
+      ## Forward
       for f_i in set(f):
         
         # Normalization term
@@ -157,6 +156,18 @@ def EM(bitext):
           fe_count[(f_i, e_j)] += c
           e_count[e_j] += c
 
+      ## Backward
+      for e_i in set(e):
+
+        # Normalization term
+        Z = np.sum(t_k_b[(e_i, f_j)] for f_j in set(f))
+
+        # For each e_j in e
+        for f_j in set(f):
+          c = t_k_b[(e_i, f_j)]/Z
+          ef_count[(e_i, f_j)] += c
+          f_count[f_j] += c
+
       if n % 1000 == 0:
         sys.stderr.write(".")
 
@@ -164,25 +175,46 @@ def EM(bitext):
     for (f, e) in fe_count.keys():
       t_k[(f, e)] = (fe_count[(f, e)]) / (e_count[e])
 
+    # Set new parameters t_k_b
+    for (e, f) in ef_count.keys():
+      t_k_b[(e, f)] = (ef_count[(e, f)]) / (f_count[f])
+
   # Decoding the best alignment
   sys.stderr.write("\nDecoding ... \n")
   for (f, e) in bitext:
-    for (i, f_i) in enumerate(f):
+    a_e = [-1] * len(e)
+    a_f = [-1] * len(f)
 
+    # Alignment for F
+    for (i, f_i) in enumerate(f):
       bestp = 0
       bestj = 0
-      beste = None
       for (j, e_j) in enumerate(e):
         if t_k[(f_i, e_j)] > bestp:
           bestp = t_k[(f_i, e_j)]
           bestj = j
-          beste = e_j
-      if nullWeight > bestp:
+      a_f[i] = bestj
+
+    # Alignment for E
+    for (i, e_i) in enumerate(e):
+        bestp = 0
+        bestj = 0
+        for (j, f_j) in enumerate(f):
+            if t_k_b[(e_i, f_j)] > bestp:
+                bestp = t_k_b[(e_i, f_j)]
+                bestj = j
+        a_e[i] = bestj
+
+    # Merge alingments
+    for i, j in enumerate(a_f):
+        if i == a_e[j]:  
+          sys.stdout.write("%i-%i " % (i, j))
+      #if nullWeight > bestp:
         # align with null
-        continue
-      else:
+      #  continue
+      #else:
         # Print alignment
-        sys.stdout.write("%i-%i " % (i, bestj))
+      
     sys.stdout.write("\n")
   return 
 
