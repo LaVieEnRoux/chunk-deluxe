@@ -181,9 +181,20 @@ def EM(bitext):
 
   # Decoding the best alignment
   sys.stderr.write("\nDecoding ... \n")
+
+  a_e_f_count = defaultdict(int)
+  a_f_e_count = defaultdict(int)
+  fe_count = defaultdict(int)
+  ef_count = defaultdict(int)
   for (f, e) in bitext:
     a_e = [-1] * len(e)
     a_f = [-1] * len(f)
+
+    # Get counts
+    for f_i in f:
+      for e_j in e:
+        fe_count[(f_i, e_j)] += 1
+        ef_count[(e_j, f_i)] += 1
 
     # Alignment for F
     for (i, f_i) in enumerate(f):
@@ -197,23 +208,35 @@ def EM(bitext):
 
     # Alignment for E
     for (i, e_i) in enumerate(e):
-        bestp = 0
-        bestj = 0
-        for (j, f_j) in enumerate(f):
-            if t_k_b[(e_i, f_j)] > bestp:
-                bestp = t_k_b[(e_i, f_j)]
-                bestj = j
-        a_e[i] = bestj
+      bestp = 0
+      bestj = 0
+      for (j, f_j) in enumerate(f):
+        if t_k_b[(e_i, f_j)] > bestp:
+          bestp = t_k_b[(e_i, f_j)]
+          bestj = j
+      a_e[i] = bestj
+
+    # Get count for alignments based on conditional probs
+    for i, j in enumerate(a_e):
+        a_e_f_count[(e[i], f[j])] += 1
+
+    for i, j in enumerate(a_f):
+        a_f_e_count[(f[i], e[j])] += 1
 
     # Merge alingments
     for i, j in enumerate(a_f):
-        if i == a_e[j]:  
-          sys.stdout.write("%i-%i " % (i, j))
-      #if nullWeight > bestp:
-        # align with null
-      #  continue
-      #else:
-        # Print alignment
+      if i == a_e[j] and abs(i-j) <= 6:  
+        sys.stdout.write("%i-%i " % (i, j))
+      else:
+        bestp = 0
+        bestk = 0
+        for (k, e_k) in enumerate(e):
+          post = float(a_e_f_count[(e_k, f[i])] + a_f_e_count[(f[i], e_k)])/float(fe_count[(f[i], e_k)] + ef_count[(e_k, f[i])])
+          if post > bestp:
+            bestp = post
+            bestk = k
+        if abs(bestk-i) <= 2 and bestp > nullWeight:
+          sys.stdout.write("%i-%i " % (i, bestk))
       
     sys.stdout.write("\n")
   return 
