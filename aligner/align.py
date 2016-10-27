@@ -53,7 +53,10 @@ def LLR(bitext, Vf_size, Ve_size, LLR_EXP):
           fe_num[(f_i, e_j)] += 1
 
     for e_i in set(e):
-      e_num[e_j] += 1
+      e_num[e_i] += 1
+
+  sys.stderr.write("English words: {}\n".format(len(e_num.keys())))
+  sys.stderr.write("English vocabulary: {}\n".format(Ve_size))
 
   # calculate LLR normalization term
   # AND use LLR to initialize the t_k
@@ -87,7 +90,7 @@ def LLR(bitext, Vf_size, Ve_size, LLR_EXP):
         llr = llr_f_e + llr_nf_e + llr_f_ne + llr_nf_ne
         llr = np.power(llr, LLR_EXP)
 
-        if fe_prob > (f_prob * e_prob) and llr > 0.9:
+        if fe_prob > (f_prob * e_prob) and llr > 0.2:
           t_k[(f_i, e_j)] = llr
           llr_sum += llr
         else:
@@ -123,13 +126,13 @@ def EM(bitext):
 
   # Define null probs
   nullWeight = 1. / Vf_size + 0.03
-  LLR_exp = 1.6
+  LLR_exp = 1
 
   # Initialize params
   t_k = LLR(bitext, Vf_size, Ve_size, LLR_exp)
 
   # Init t_k and initialize variables for better initialization
-  iters = 6
+  iters = 8
 
   # Init t_k backwards
   t_k_b = defaultdict(lambda:1.0 / Ve_size)
