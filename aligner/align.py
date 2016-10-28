@@ -126,7 +126,7 @@ def EM(bitext):
   LLR_exp = 1.6
 
   # Initialize params
-  t_k = LLR(bitext, Vf_size, Ve_size, LLR_exp)
+  t_k = defaultdict(lambda:1.0 / Vf_size) #LLR(bitext, Vf_size, Ve_size, LLR_exp)
 
   # Init t_k and initialize variables for better initialization
   iters = 6
@@ -230,7 +230,7 @@ def EM(bitext):
 
     # Merge alingments
     for i, j in enumerate(a_f):
-      if i == a_e[j] and abs(i-j) <= 6:  
+      if i == a_e[j] and abs(i-j) <= 0.5*(len(a_f)+len(a_e))/2:  
         sys.stdout.write("%i-%i " % (i, j))
       else:
         bestp = 0
