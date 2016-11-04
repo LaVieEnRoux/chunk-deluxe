@@ -10,12 +10,12 @@ optparser.add_option("-t", "--translation-model", dest="tm", default="data/tm", 
 optparser.add_option("-l", "--language-model", dest="lm", default="data/lm", help="File containing ARPA-format language model (default=data/lm)")
 optparser.add_option("-n", "--num_sentences", dest="num_sents", default=sys.maxint, type="int", help="Number of sentences to decode (default=no limit)")
 optparser.add_option("-k", "--translations-per-phrase", dest="k", default=1, type="int", help="Limit on number of translations to consider per phrase (default=1)")
-optparser.add_option("-s", "--stack-size", dest="s", default=100, type="int",
+optparser.add_option("-s", "--stack-size", dest="s", default=200, type="int",
                      help="Maximum stack size (default=8)")
 optparser.add_option("-v", "--verbose", dest="verbose", action="store_true", default=False,  help="Verbose mode (default=off)")
 opts = optparser.parse_args()[0]
 
-def getPhraseList(f, locs, MAXLEN=2, MAXLOOKAHEAD=4):
+def getPhraseList(f, locs, MAXLEN=6, MAXLOOKAHEAD=7):
 
     # locs is a vector like (0, 1, 1, ....)
     # it defines which phrases we can afford to add
@@ -28,7 +28,8 @@ def getPhraseList(f, locs, MAXLEN=2, MAXLOOKAHEAD=4):
     for i, v in enumerate(locs):
         if v == 0:
 
-            lookahead += 1
+            if lookahead == 0:
+                lookahead += 1
 
             # prevents us from looking back too far
             if numFree < MAXLEN:
@@ -51,6 +52,8 @@ def getPhraseList(f, locs, MAXLEN=2, MAXLOOKAHEAD=4):
         # don't look too far ahead!
         if lookahead > MAXLOOKAHEAD:
             break
+        if lookahead > 0:
+            lookahead += 1
 
     return phraseList, locList
 
@@ -62,7 +65,7 @@ french = [tuple(line.strip().split()) for line in open(opts.input).readlines()[:
 # tm should translate unknown words as-is with probability 1
 for word in set(sum(french,())):
     if (word,) not in tm:
-      tm[(word,)] = [models.phrase(word, 0.0)]
+        tm[(word,)] = [models.phrase(word, 0.0)]
 
 sys.stderr.write("Decoding %s...\n" % (opts.input,))
 for f in french:
@@ -108,7 +111,10 @@ for f in french:
                 # we don't need an entire damn indentation level
                 # just for this conditional
                 if newPhrase not in tm:
-                    continue
+                    # check if lowercase is in tm
+                    newPhrase = tuple([p.lower() for p in list(newPhrase)])
+                    if newPhrase not in tm:
+                        continue
 
                 # sys.stderr.write("Current french candidate: " +
                 #                  str(fr) + "\n")
