@@ -111,10 +111,7 @@ for f in french:
                 # we don't need an entire damn indentation level
                 # just for this conditional
                 if newPhrase not in tm:
-                    # check if lowercase is in tm
-                    newPhrase = tuple([p.lower() for p in list(newPhrase)])
-                    if newPhrase not in tm:
-                        continue
+                    continue
 
                 # sys.stderr.write("Current french candidate: " +
                 #                  str(fr) + "\n")
