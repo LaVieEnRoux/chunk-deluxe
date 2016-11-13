@@ -3,19 +3,22 @@ import optparse
 import sys
 import models
 from collections import namedtuple, Counter
+import numpy as np
 
 optparser = optparse.OptionParser()
 optparser.add_option("-i", "--input", dest="input", default="data/input", help="File containing sentences to translate (default=data/input)")
 optparser.add_option("-t", "--translation-model", dest="tm", default="data/tm", help="File containing translation model (default=data/tm)")
 optparser.add_option("-l", "--language-model", dest="lm", default="data/lm", help="File containing ARPA-format language model (default=data/lm)")
 optparser.add_option("-n", "--num_sentences", dest="num_sents", default=sys.maxint, type="int", help="Number of sentences to decode (default=no limit)")
-optparser.add_option("-k", "--translations-per-phrase", dest="k", default=1, type="int", help="Limit on number of translations to consider per phrase (default=1)")
-optparser.add_option("-s", "--stack-size", dest="s", default=200, type="int",
+optparser.add_option("-k", "--translations-per-phrase", dest="k", default=11, type="int", help="Limit on number of translations to consider per phrase (default=1)")
+optparser.add_option("-s", "--stack-size", dest="s", default=4000, type="int",
                      help="Maximum stack size (default=8)")
 optparser.add_option("-v", "--verbose", dest="verbose", action="store_true", default=False,  help="Verbose mode (default=off)")
+optparser.add_option("-d", "--distanceWeight", dest="distanceWeight",
+                     default=0.92, help="Weight for distance decoding")
 opts = optparser.parse_args()[0]
 
-def getPhraseList(f, locs, MAXLEN=6, MAXLOOKAHEAD=7):
+def getPhraseList(f, locs, MAXLEN=7, MAXLOOKAHEAD=7):
 
     # locs is a vector like (0, 1, 1, ....)
     # it defines which phrases we can afford to add
@@ -75,8 +78,9 @@ for f in french:
     # the first i words of the input sentence. You should generalize
     # this so that they can represent translations of *any* i words.
     hypothesis = namedtuple("hypothesis", "logprob, lm_state, predecessor, "
-                            + "phrase, decodeLocs") 
-    initial_hypothesis = hypothesis(0.0, lm.begin(), None, None, [0] * len(f))
+                            + "phrase, decodeLocs, prevPhraseEnd") 
+    initial_hypothesis = hypothesis(0.0, lm.begin(), None, None, [0] * len(f),
+                                    0)
     stacks = [{} for _ in f] + [{}]
     stacks[0][lm.begin()] = initial_hypothesis
 
@@ -124,12 +128,21 @@ for f in french:
                         (lm_state, word_logprob) = lm.score(lm_state, word)
                         logprob += word_logprob
 
+                    # calculate distance score
+                    newPhraseLocs = [a - b for a, b in zip(newLoc,
+                                                           h.decodeLocs)]
+                    decodedInd = [i for i, v in enumerate(newPhraseLocs)
+                                  if v == 1]
+                    phraseStart = decodedInd[0]
+                    distance = abs(phraseStart - h.prevPhraseEnd - 1)
+                    logprob += np.log(opts.distanceWeight) * distance
+
                     # j is the number of matched words
                     j = newLoc.count(1)
 
                     logprob += lm.end(lm_state) if j == len(f) else 0.0
                     new_hypothesis = hypothesis(logprob, lm_state, h, phrase,
-                                                newLoc)
+                                                newLoc, decodedInd[-1])
 
                     if lm_state not in stacks[j] \
                     or stacks[j][lm_state].logprob < logprob: # second case is recombination
