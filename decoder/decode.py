@@ -15,10 +15,21 @@ optparser.add_option("-s", "--stack-size", dest="s", default=4000, type="int",
                      help="Maximum stack size (default=8)")
 optparser.add_option("-v", "--verbose", dest="verbose", action="store_true", default=False,  help="Verbose mode (default=off)")
 optparser.add_option("-d", "--distanceWeight", dest="distanceWeight",
-                     default=0.92, help="Weight for distance decoding")
+                     default=0.92, type="float", help="Weight for distance decoding")
+optparser.add_option("-lm", "--languageModelWeight", dest="lmw", default=0.33,
+                     type="float")
+optparser.add_option("-tm", "--translationModelWeight", dest="tmw", default=0.33, 
+                     type="float")
+optparser.add_option("-dm", "--distanceModelWeight", dest="dmw", default=0.33,
+                     type="float")
+
 opts = optparser.parse_args()[0]
 
 def getPhraseList(f, locs, MAXLEN=7, MAXLOOKAHEAD=7):
+    '''
+    This code is for generating a set of proposals for possible
+    consecutive sentences to translate
+    '''
 
     # locs is a vector like (0, 1, 1, ....)
     # it defines which phrases we can afford to add
@@ -72,11 +83,6 @@ for word in set(sum(french,())):
 
 sys.stderr.write("Decoding %s...\n" % (opts.input,))
 for f in french:
-    # The following code implements a monotone decoding
-    # algorithm (one that doesn't permute the target phrases).
-    # Hence all hypotheses in stacks[i] represent translations of 
-    # the first i words of the input sentence. You should generalize
-    # this so that they can represent translations of *any* i words.
     hypothesis = namedtuple("hypothesis", "logprob, lm_state, predecessor, "
                             + "phrase, decodeLocs, prevPhraseEnd") 
     initial_hypothesis = hypothesis(0.0, lm.begin(), None, None, [0] * len(f),
@@ -99,17 +105,6 @@ for f in french:
             sys.stderr.write("Corresponding locations: {}\n".format(newLocs))
             '''
 
-
-            '''
-            for j in xrange(i + 1, len(f) + 1):
-
-                fr = f[i:j]
-                # iterate through adjacent swaps
-                for k in xrange(j - i):
-
-                    if fr in tm:
-            '''
-
             for newPhrase, newLoc in zip(newPhrases, newLocs):
 
                 # we don't need an entire damn indentation level
@@ -121,25 +116,28 @@ for f in french:
                 #                  str(fr) + "\n")
                 for phrase in tm[newPhrase]:
 
-                    logprob = h.logprob + phrase.logprob
+                    # calculate and add translation model score
+                    logprob = h.logprob + phrase.logprob * opts.tmw
                     lm_state = h.lm_state
 
+                    # calculate and add language model score
                     for word in phrase.english.split():
                         (lm_state, word_logprob) = lm.score(lm_state, word)
-                        logprob += word_logprob
+                        logprob += word_logprob * opts.lmw
 
-                    # calculate distance score
+                    # calculate and add distance score
                     newPhraseLocs = [a - b for a, b in zip(newLoc,
                                                            h.decodeLocs)]
                     decodedInd = [i for i, v in enumerate(newPhraseLocs)
                                   if v == 1]
                     phraseStart = decodedInd[0]
                     distance = abs(phraseStart - h.prevPhraseEnd - 1)
-                    logprob += np.log(opts.distanceWeight) * distance
+                    logprob += np.log(opts.distanceWeight) * distance * opts.dmw
 
                     # j is the number of matched words
                     j = newLoc.count(1)
 
+                    # add to hypothesis stack
                     logprob += lm.end(lm_state) if j == len(f) else 0.0
                     new_hypothesis = hypothesis(logprob, lm_state, h, phrase,
                                                 newLoc, decodedInd[-1])
@@ -150,14 +148,14 @@ for f in french:
 
     winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
 
-    def extract_english(h): 
+    def extract_english(h):
         return "" if h.predecessor is None else "%s%s " % (extract_english(h.predecessor), h.phrase.english)
     print extract_english(winner)
 
 
 if opts.verbose:
-   def extract_tm_logprob(h):
-       return 0.0 if h.predecessor is None else h.phrase.logprob + extract_tm_logprob(h.predecessor)
-   tm_logprob = extract_tm_logprob(winner)
-   sys.stderr.write("LM = %f, TM = %f, Total = %f\n" %
-       (winner.logprob - tm_logprob, tm_logprob, winner.logprob))
+    def extract_tm_logprob(h):
+        return 0.0 if h.predecessor is None else h.phrase.logprob + extract_tm_logprob(h.predecessor)
+    tm_logprob = extract_tm_logprob(winner)
+    sys.stderr.write("LM = %f, TM = %f, Total = %f\n" %
+        (winner.logprob - tm_logprob, tm_logprob, winner.logprob))
