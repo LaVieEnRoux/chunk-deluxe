@@ -11,16 +11,16 @@ optparser.add_option("-t", "--translation-model", dest="tm", default="data/tm", 
 optparser.add_option("-l", "--language-model", dest="lm", default="data/lm", help="File containing ARPA-format language model (default=data/lm)")
 optparser.add_option("-n", "--num_sentences", dest="num_sents", default=sys.maxint, type="int", help="Number of sentences to decode (default=no limit)")
 optparser.add_option("-k", "--translations-per-phrase", dest="k", default=11, type="int", help="Limit on number of translations to consider per phrase (default=1)")
-optparser.add_option("-s", "--stack-size", dest="s", default=4000, type="int",
+optparser.add_option("-s", "--stack-size", dest="s", default=100, type="int",
                      help="Maximum stack size (default=8)")
 optparser.add_option("-v", "--verbose", dest="verbose", action="store_true", default=False,  help="Verbose mode (default=off)")
 optparser.add_option("-d", "--distanceWeight", dest="distanceWeight",
                      default=0.92, type="float", help="Weight for distance decoding")
-optparser.add_option("-lm", "--languageModelWeight", dest="lmw", default=0.33,
+optparser.add_option("-x", "--languageModelWeight", dest="lmw", default=0.7,
                      type="float")
-optparser.add_option("-tm", "--translationModelWeight", dest="tmw", default=0.33, 
+optparser.add_option("-y", "--translationModelWeight", dest="tmw", default=1,
                      type="float")
-optparser.add_option("-dm", "--distanceModelWeight", dest="dmw", default=0.33,
+optparser.add_option("-z", "--distanceModelWeight", dest="dmw", default=1.1,
                      type="float")
 
 opts = optparser.parse_args()[0]
