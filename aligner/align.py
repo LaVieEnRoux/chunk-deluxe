@@ -243,7 +243,7 @@ def EM(bitext):
           if post > bestp:
             bestp = post
             bestk = k
-        if abs(bestk-i) <= 2 and bestp > nullWeight:
+        if abs(bestk-i) <= 0 *(len(a_f)+len(a_e))/2 and bestp > nullWeight:
           sys.stdout.write("%i-%i " % (i, bestk))
       
     sys.stdout.write("\n")
