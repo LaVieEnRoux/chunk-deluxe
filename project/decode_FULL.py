@@ -22,7 +22,7 @@ optparser.add_option("-n", "--num_sentences", dest="num_sents",
                      default=sys.maxint,
                      type="int", help="Number of sentences to decode (default=no limit)")
 
-optparser.add_option("-k", "--translations-per-phrase", dest="k", default=11, type="int",
+optparser.add_option("-k", "--translations-per-phrase", dest="k", default=7, type="int",
                      help="Limit on number of translations to consider per phrase (default=1)")
 
 optparser.add_option("-s", "--stack-size", dest="s", default=100, type="int",
