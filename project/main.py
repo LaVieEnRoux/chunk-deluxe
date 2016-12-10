@@ -1,9 +1,11 @@
 from decode_FULL import decode
-from bleu import bleu, bleu_stats
+from rerank import PRO
+from bleu import bleu, bleu_stats, smoothed_bleu
 import numpy as np
 
-numSentences = 5  # number of sentences to decode
+numSentences = 20  # number of sentences to decode
 bleuNum = 10  # number of bleu stats
+numIter = 2
 
 # open reference files and specify weights
 referenceFiles = ["./data/all.cn-en.en0",
@@ -11,13 +13,13 @@ referenceFiles = ["./data/all.cn-en.en0",
                   "./data/all.cn-en.en2",
                   "./data/all.cn-en.en3"]
 refs = [open(f, "r") for f in referenceFiles]
+scoreWeights = [0, 0, 0, 0, 0]
 refWeights = [0.25, 0.25, 0.25, 0.25]
 
 sourceFile = "./data/all.cn-en.cn"
+nbestFilePath = "./data/dev.nbest"
 
 allStats = [np.empty((numSentences, bleuNum)) for _ in refs]
-
-numIter = 1
 
 # run for a number of iterations to improve BLEU score
 for k in range(numIter):
@@ -26,15 +28,19 @@ for k in range(numIter):
     print "Beginning iteration {}...".format(k)
     print
 
+    nbestFile = open(nbestFilePath, "w")
+
     # calculate BLEU score across all top translations for all references
     # use current version of feature weights
-    for i, nbest in enumerate(decode(sourceFile, numSentences=numSentences)):
+    for i, (nbest, feats) in enumerate(decode(sourceFile,
+                                              numSentences=numSentences,
+                                              rerankWeights=scoreWeights)):
+
+        if i % 20 == 0:
+            print "Decoding {} / {}...".format(i, numSentences)
 
         # iterate across references
         for rInd, r in enumerate(refs):
-
-            if i % 50 == 0:
-                print "Decoding sentence {} out of {}...".format(i, numSentences)
 
             ref = r.readline().strip()
 
@@ -42,12 +48,28 @@ for k in range(numIter):
             stats = np.array(stats)
             allStats[rInd][i, :] = stats
 
-        # calculate BLEU score
-        means = [np.mean(allS, axis=0) for allS in allStats]
-        averagedBleu = sum([bleu(m) * w for m, w in zip(means, refWeights)])
+        # add sentence and stats to nbest file
+        for sentence, sentenceFeats in zip(nbest, feats):
 
-        # save sentence and features to nbest file
+            # grab BLEU score
+            bleuScore = bleu([el for el in bleu_stats(sentence, ref)])
+            smoothBleu = smoothed_bleu([el for el
+                                        in bleu_stats(sentence, ref)])
+
+            nbestFile.write(str(i) + " ||| ")
+            nbestFile.write(sentence + " ||| ")
+            for feat in sentenceFeats:
+                nbestFile.write("{} ".format(feat))
+            nbestFile.write(" ||| {}".format(bleuScore))
+            nbestFile.write(" ||| {}".format(smoothBleu))
+            nbestFile.write("\n")
+
+    # calculate BLEU score
+    means = [np.mean(allS, axis=0) for allS in allStats]
+    averagedBleu = sum([bleu(m) * w for m, w in zip(means, refWeights)])
 
     # run reranker on nbest file to produce new feature weights
+    theta = PRO(nbestFilePath)
+    scoreWeights = theta
 
 print "BLEU score: {}".format(averagedBleu)

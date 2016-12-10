@@ -53,6 +53,7 @@ def preprocess():
         sys.stderr.write(str(int((k+1)/float(len(allLines))*100)) + "%\r")
 
         # Extract info
+        print line
         (i, c_sentence, features) = line.strip().split("|||")
         features = [float(h) for h in features.strip().split()]
         ref_sentence = train_data[int(i)]
@@ -128,7 +129,7 @@ def preprocess():
 def splitting():
     return
 
-def PRO():
+def PRO(nbestFilePath):
 
     # Params
     epochs = 150
@@ -139,27 +140,33 @@ def PRO():
     batch_size = 50
 
     # Check if dataset is preprocessed 
-    if not os.path.isfile('./mod_test.nbest') or not os.path.isfile('./mod_train.nbest'):
-        preprocess()
-        
+    # if not os.path.isfile('./mod_test.nbest') or not os.path.isfile('./mod_train.nbest'):
+    #     preprocess()
+
     # Get nbests
     sys.stderr.write("Extracting info ...\n") 
     nbests = defaultdict(list)
 
     # Read nbest data
-    with open('./mod_train.nbest') as f:
+    with open(nbestFilePath) as f:
         allLines = f.readlines()
 
     for k, line in enumerate(allLines):
 
-        sys.stderr.write(str(int((k+1)/float(len(allLines))*100)) + "%\r")
+        # sys.stderr.write(str(int((k+1)/float(len(allLines))*100)) + "%\r")
 
         # Extract info
-        (i, c_sentence, features, bleu, smoothed_bleu) = line.strip().split("|||")
-        features = [float(h) for h in features.strip().split()]
+        # (i, c_sentence, features, bleu, smoothed_bleu) = line.strip().split("|||")
+        print line
+        try:
+            (i, c_sentence, features, bleu, sbleu) = line.strip().split("|||")
+            features = [float(h) for h in features.strip().split()]
+        except ValueError:
+            print "Weird error???"
 
         # Compute bleu score
-        nbests[int(i)] += [(c_sentence, np.array(features), float(bleu), float(smoothed_bleu))]
+        nbests[int(i)] += [(c_sentence, np.array(features),
+                            float(bleu), float(sbleu))]
 
     # Init theta
     features_num = nbests[0][0][1].shape[0] 
@@ -218,7 +225,7 @@ def PRO():
     sys.stderr.write("\n")
 
     print "\n".join([str(t) for t in theta])
-    return
+    return theta
 
 if __name__ == '__main__':
     PRO()

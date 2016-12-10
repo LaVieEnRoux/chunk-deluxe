@@ -198,19 +198,68 @@ def getPhraseListV2(f, locs, MAXLEN=7, MAXLOOKAHEAD=7):
     return phraseList, locList
 
 
+def getPhraseNum(h):
+
+    if h.predecessor is None:
+        return 0
+
+    return 1 + getPhraseNum(h.predecessor)
+
+
+def getHypoLM(h):
+
+    if h.predecessor is None:
+        return 0
+
+    return h.lmprob + getHypoLM(h.predecessor)
+
+
+def getFeatSum(h, featNum):
+
+    if h.predecessor is None:
+        return 0
+
+    if featNum == 1:
+        newFeat = h.phrase.feat1
+    elif featNum == 2:
+        newFeat = h.phrase.feat2
+    elif featNum == 3:
+        newFeat = h.phrase.feat3
+    elif featNum == 4:
+        newFeat = h.phrase.feat4
+
+    return newFeat + getFeatSum(h.predecessor, featNum)
+
+
+def getScore(h, weights):
+    '''
+    returns score for comparing the best hypothesis from the final
+    stack
+
+    this uses the weights from the reranker!
+    '''
+    weights = np.array(weights)
+    feats = np.array([getFeatSum(h, 1),
+                      getFeatSum(h, 2),
+                      getFeatSum(h, 3),
+                      getFeatSum(h, 4),
+                      getHypoLM(h)])
+    return np.dot(feats, weights)
+
+
 def decode(frenchSource, numSentences=100, nbest=100, stcksize=100,
-           weights=(0.25, 0.25, 0.25, 0.25)):
+           weights=(1, 1, 1, 1), rerankWeights=(0.2, 0.2, 0.2, 0.2, 0.2)):
     '''
     returns n-best translations from each of the specified sentences
     '''
 
     tm = models.TM(opts.tm, opts.k)
     lm = models.LM(opts.lm)
-    french = [tuple(line.strip().split()) 
+    french = [tuple(line.strip().split())
               for line in open(frenchSource).readlines()[:numSentences]]
 
     # tm should translate unknown words as-is with probability 1
-    for word in set(sum(french,())):
+    for word in set(sum(french, ())):
         if (word,) not in tm:
             tm[(word,)] = [models.phrase(word, 0.0, 0.0, 0.0, 0.0)]
 
@@ -219,9 +268,9 @@ def decode(frenchSource, numSentences=100, nbest=100, stcksize=100,
 
         # future_cost_table = estimate_cost_table(tm, lm, f)
         hypothesis = namedtuple("hypothesis", "logprob, lm_state, predecessor, "
-                                + "phrase, decodeLocs, prevPhraseEnd, future_cost") 
+                                + "phrase, decodeLocs, prevPhraseEnd, lmprob") 
         initial_hypothesis = hypothesis(0.0, lm.begin(), None, None, [0] * len(f),
-                                        0, -99999)
+                                        0, 0)
         stacks = [{} for _ in f] + [{}]
         stacks[0][lm.begin()] = initial_hypothesis
         winner = []
@@ -230,39 +279,39 @@ def decode(frenchSource, numSentences=100, nbest=100, stcksize=100,
 
             for pos, h in enumerate(sorted(stack.itervalues(),
                                            key=lambda h: -h.logprob)[:stcksize]):
-                #print [len(s.keys()) for s in stacks]
-                #print h.logprob, h.future_cost
+                # print [len(s.keys()) for s in stacks]
+                # print h.logprob, h.future_cost
                 # generate list of possible words for new hypotheses
                 if winner != [] and h.logprob < winner.logprob: # prune
-                    #print "%d out of %d at %d" % (pos, len(stack.keys()), i) 
+                    # print "%d out of %d at %d" % (pos, len(stack.keys()), i)
                     break
-    
+
                 newPhrases, newLocs = getPhraseListV2(f, h.decodeLocs,
                                                       MAXLEN=7, MAXLOOKAHEAD=7)
-    
+
                 for newPhrase, newLoc in zip(newPhrases, newLocs):
-    
+
                     # we don't need an entire damn indentation level
                     # just for this conditional
                     if newPhrase not in tm:
                         continue
-                    
+
                     for phrase in tm[newPhrase]:
-    
-                        # calculate weighted logprob from features
+
+                        # calculate weighted logprob from 4 features
                         phraseLogprob = featureSummary(phrase, weights)
-    
+
                         # calculate and add translation model score
                         logprob = h.logprob + phraseLogprob * opts.tmw
                         lm_state = h.lm_state
-    
+
                         # calculate and add language model score
                         lm_logprob = 0.0
                         for word in phrase.english.split():
                             (lm_state, word_logprob) = lm.score(lm_state, word)
                             lm_logprob += word_logprob
-                        logprob +=  lm_logprob * opts.lmw
-    
+                        logprob += lm_logprob * opts.lmw
+
                         # calculate and add distance score
                         newPhraseLocs = [a - b for a, b in zip(newLoc, h.decodeLocs)]
                         decodedInd = [i for i, v in enumerate(newPhraseLocs) if v == 1]
@@ -270,15 +319,16 @@ def decode(frenchSource, numSentences=100, nbest=100, stcksize=100,
                         distance = abs(h.prevPhraseEnd + 1 - phraseStart)
                         # distance += abs(len(phrase.english.split()) - len(newPhrase))
                         logprob += np.log(opts.distanceWeight) * distance * opts.dmw
-    
+
                         # j is the number of matched words
                         j = newLoc.count(1)
 
                         # add to hypothesis stack
                         logprob += lm.end(lm_state) if j == len(f) else 0.0
                         # cost = get_fc(future_cost_table, newLoc, f)
-                        cost = 0
-                        new_hypothesis = hypothesis(logprob, lm_state, h, phrase, newLoc, decodedInd[-1], cost)
+                        new_hypothesis = hypothesis(logprob, lm_state, h,
+                                                    phrase, newLoc,
+                                                    decodedInd[-1], lm_logprob)
 
                         # Check winner
                         if j == len(f):
@@ -290,23 +340,39 @@ def decode(frenchSource, numSentences=100, nbest=100, stcksize=100,
                             if lm_state not in stacks[j] \
                             or stacks[j][lm_state].logprob < logprob:
                                 stacks[j][lm_state] = new_hypothesis
-                        else:        
+                        else:
                             # Add to stack
                             if lm_state not in stacks[j] \
                             or stacks[j][lm_state].logprob < logprob: # second case is recombination
                                 stacks[j][lm_state] = new_hypothesis
 
         def extract_english(h):
-            return "" if h.predecessor is None else "%s%s " % (extract_english(h.predecessor), h.phrase.english)
+            return "" if h.predecessor is None \
+                else "%s%s " % (extract_english(h.predecessor), h.phrase.english)
         # print extract_english(winner)
 
         # extract english for top-n translations
         topn = []
         for trans in sorted(stacks[-1].itervalues(), key=lambda h:
-                            -h.logprob)[:nbest]:
+                            -getScore(h, rerankWeights))[:nbest]:
             topn.append(extract_english(trans))
 
-        yield topn
+        # extract sentence-wide features
+        feats = []
+        for trans in sorted(stacks[-1].itervalues(), key=lambda h:
+                            -h.logprob)[:nbest]:
+
+            # phraseNum = float(getPhraseNum(trans))
+
+            f1sum = getFeatSum(trans, 1)
+            f2sum = getFeatSum(trans, 2)
+            f3sum = getFeatSum(trans, 3)
+            f4sum = getFeatSum(trans, 4)
+            lmsum = getHypoLM(trans)
+            allSums = [f1sum, f2sum, f3sum, f4sum, lmsum]
+            feats.append(allSums)
+
+        yield topn, feats
 
     '''
     if opts.verbose:
