@@ -231,6 +231,11 @@ def getFeatSum(h, featNum):
     return newFeat + getFeatSum(h.predecessor, featNum)
 
 
+def extract_english(h):
+    return "" if h.predecessor is None \
+        else "%s%s " % (extract_english(h.predecessor), h.phrase.english)
+
+
 def getScore(h, weights):
     '''
     returns score for comparing the best hypothesis from the final
@@ -243,7 +248,8 @@ def getScore(h, weights):
                       getFeatSum(h, 2),
                       getFeatSum(h, 3),
                       getFeatSum(h, 4),
-                      getHypoLM(h)])
+                      getHypoLM(h),
+                      len(extract_english(h).split())])
     return np.dot(feats, weights)
 
 
@@ -350,16 +356,12 @@ def decode(frenchSource, numSentences=100, nbest=100, stcksize=100,
                             or stacks[j][lm_state].logprob < logprob: # second case is recombination
                                 stacks[j][lm_state] = new_hypothesis
 
-        def extract_english(h):
-            return "" if h.predecessor is None \
-                else "%s%s " % (extract_english(h.predecessor), h.phrase.english)
-        # print extract_english(winner)
-
         # extract english for top-n translations AND sentence wide features
         topn, feats = [], []
         for trans in sorted(stacks[-1].itervalues(), key=lambda h:
                             -getScore(h, rerankWeights))[:nbest]:
-            topn.append(extract_english(trans))
+            eng = extract_english(trans)
+            topn.append(eng)
 
             # phraseNum = float(getPhraseNum(trans))
 
@@ -368,7 +370,7 @@ def decode(frenchSource, numSentences=100, nbest=100, stcksize=100,
             f3sum = getFeatSum(trans, 3)
             f4sum = getFeatSum(trans, 4)
             lmsum = getHypoLM(trans)
-            allSums = [f1sum, f2sum, f3sum, f4sum, lmsum]
+            allSums = [f1sum, f2sum, f3sum, f4sum, lmsum, len(eng.split())]
             feats.append(allSums)
 
         yield topn, feats
