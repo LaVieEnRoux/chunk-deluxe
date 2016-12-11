@@ -132,7 +132,7 @@ def splitting():
 def PRO(nbestFilePath):
 
     # Params
-    epochs = 150
+    epochs = 50
     tau = 5000
     alpha = 0.1
     xi = 500
@@ -157,16 +157,16 @@ def PRO(nbestFilePath):
 
         # Extract info
         # (i, c_sentence, features, bleu, smoothed_bleu) = line.strip().split("|||")
-        print line
         try:
             (i, c_sentence, features, bleu, sbleu) = line.strip().split("|||")
             features = [float(h) for h in features.strip().split()]
         except ValueError:
             print "Weird error???"
+            continue
 
         # Compute bleu score
         nbests[int(i)] += [(c_sentence, np.array(features),
-                            float(bleu), float(sbleu))]
+                            float(bleu.strip()), float(sbleu.strip()))]
 
     # Init theta
     features_num = nbests[0][0][1].shape[0] 
@@ -220,11 +220,8 @@ def PRO(nbestFilePath):
 
         sys.stderr.write("Iter: %d Mistakes: %d\r" % (k+1, mistakes) )
 
-    sys.stderr.write("\nWeights:\n")
-    sys.stderr.write("\n".join([str(t) for t in theta]))
     sys.stderr.write("\n")
 
-    print "\n".join([str(t) for t in theta])
     return theta
 
 if __name__ == '__main__':

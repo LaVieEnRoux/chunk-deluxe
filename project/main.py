@@ -4,26 +4,25 @@ from bleu import bleu, bleu_stats, smoothed_bleu
 import numpy as np
 import models_FULL as models
 
-numSentences = 100  # number of sentences to decode
+numSentences = 200  # number of sentences to decode
 bleuNum = 10  # number of bleu stats
-numIter = 4
+numIter = 5
+verbose = True
 
 # open reference files and specify weights
 referenceFiles = ["./data/all.cn-en.en0",
                   "./data/all.cn-en.en1",
                   "./data/all.cn-en.en2",
                   "./data/all.cn-en.en3"]
-refs = [open(f, "r") for f in referenceFiles]
-scoreWeights = np.array([0.2, 0.2, 0.2, 0.2, 0.2])
+scoreWeights = np.array([0., 0., 0., 0., 0.])
 refWeights = [0.25, 0.25, 0.25, 0.25]
 
-numPhrases = 7
+numPhrases = 8
 translationModel = "./data/rules_cnt.final.out"
 languageModel = "./data/en.gigaword.3g.filtered.dev_test.arpa.gz"
 sourceFile = "./data/all.cn-en.cn"
 nbestFilePath = "./data/dev.nbest"
 
-allStats = [np.empty((numSentences, bleuNum)) for _ in refs]
 
 # load translation model and language model
 tm = models.TM(translationModel, numPhrases)
@@ -34,9 +33,14 @@ for k in range(numIter):
 
     print
     print "Beginning iteration {}...".format(k)
+    print "Current weights: {}".format(scoreWeights)
     print
 
     nbestFile = open(nbestFilePath, "w")
+
+    # set up for calculating BLEU score against references
+    allStats = [np.empty((numSentences, bleuNum)) for _ in referenceFiles]
+    refs = [open(f, "r") for f in referenceFiles]
 
     # calculate BLEU score across all top translations for all references
     # use current version of feature weights
@@ -47,6 +51,10 @@ for k in range(numIter):
 
         if i % 20 == 0:
             print "Decoding {} / {}...".format(i, numSentences)
+
+        if verbose:
+            if i == 5:
+                print nbest[0]
 
         # iterate across references
         for rInd, r in enumerate(refs):
@@ -61,9 +69,9 @@ for k in range(numIter):
         for sentence, sentenceFeats in zip(nbest, feats):
 
             # grab BLEU score
-            bleuScore = bleu([el for el in bleu_stats(sentence, ref)])
-            smoothBleu = smoothed_bleu([el for el
-                                        in bleu_stats(sentence, ref)])
+            s = [el for el in bleu_stats(sentence, ref)]
+            bleuScore = bleu(s)
+            smoothBleu = smoothed_bleu(s)
 
             nbestFile.write(str(i) + " ||| ")
             nbestFile.write(sentence + " ||| ")
@@ -80,5 +88,9 @@ for k in range(numIter):
     # run reranker on nbest file to produce new feature weights
     theta = PRO(nbestFilePath)
     scoreWeights += theta
+
+    # close files for reopening
+    for r in refs:
+        r.close()
 
     print "BLEU score: {}".format(averagedBleu)

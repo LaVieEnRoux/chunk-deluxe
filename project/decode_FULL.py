@@ -25,7 +25,7 @@ optparser.add_option("-n", "--num_sentences", dest="num_sents",
 optparser.add_option("-k", "--translations-per-phrase", dest="k", default=7, type="int",
                      help="Limit on number of translations to consider per phrase (default=1)")
 
-optparser.add_option("-s", "--stack-size", dest="s", default=100, type="int",
+optparser.add_option("-s", "--stack-size", dest="s", default=150, type="int",
                      help="Maximum stack size (default=8)")
 
 optparser.add_option("-v", "--verbose", dest="verbose",
@@ -355,16 +355,11 @@ def decode(frenchSource, numSentences=100, nbest=100, stcksize=100,
                 else "%s%s " % (extract_english(h.predecessor), h.phrase.english)
         # print extract_english(winner)
 
-        # extract english for top-n translations
-        topn = []
+        # extract english for top-n translations AND sentence wide features
+        topn, feats = [], []
         for trans in sorted(stacks[-1].itervalues(), key=lambda h:
                             -getScore(h, rerankWeights))[:nbest]:
             topn.append(extract_english(trans))
-
-        # extract sentence-wide features
-        feats = []
-        for trans in sorted(stacks[-1].itervalues(), key=lambda h:
-                            -h.logprob)[:nbest]:
 
             # phraseNum = float(getPhraseNum(trans))
 
