@@ -2,10 +2,11 @@ from decode_FULL import decode
 from rerank import PRO
 from bleu import bleu, bleu_stats, smoothed_bleu
 import numpy as np
+import models_FULL as models
 
-numSentences = 20  # number of sentences to decode
+numSentences = 100  # number of sentences to decode
 bleuNum = 10  # number of bleu stats
-numIter = 2
+numIter = 4
 
 # open reference files and specify weights
 referenceFiles = ["./data/all.cn-en.en0",
@@ -13,13 +14,20 @@ referenceFiles = ["./data/all.cn-en.en0",
                   "./data/all.cn-en.en2",
                   "./data/all.cn-en.en3"]
 refs = [open(f, "r") for f in referenceFiles]
-scoreWeights = [0, 0, 0, 0, 0]
+scoreWeights = np.array([0.2, 0.2, 0.2, 0.2, 0.2])
 refWeights = [0.25, 0.25, 0.25, 0.25]
 
+numPhrases = 7
+translationModel = "./data/rules_cnt.final.out"
+languageModel = "./data/en.gigaword.3g.filtered.dev_test.arpa.gz"
 sourceFile = "./data/all.cn-en.cn"
 nbestFilePath = "./data/dev.nbest"
 
 allStats = [np.empty((numSentences, bleuNum)) for _ in refs]
+
+# load translation model and language model
+tm = models.TM(translationModel, numPhrases)
+lm = models.LM(languageModel)
 
 # run for a number of iterations to improve BLEU score
 for k in range(numIter):
@@ -34,7 +42,8 @@ for k in range(numIter):
     # use current version of feature weights
     for i, (nbest, feats) in enumerate(decode(sourceFile,
                                               numSentences=numSentences,
-                                              rerankWeights=scoreWeights)):
+                                              rerankWeights=scoreWeights,
+                                              lm=lm, tm=tm)):
 
         if i % 20 == 0:
             print "Decoding {} / {}...".format(i, numSentences)
@@ -70,6 +79,6 @@ for k in range(numIter):
 
     # run reranker on nbest file to produce new feature weights
     theta = PRO(nbestFilePath)
-    scoreWeights = theta
+    scoreWeights += theta
 
-print "BLEU score: {}".format(averagedBleu)
+    print "BLEU score: {}".format(averagedBleu)

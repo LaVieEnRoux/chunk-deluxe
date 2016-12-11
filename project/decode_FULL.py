@@ -248,13 +248,17 @@ def getScore(h, weights):
 
 
 def decode(frenchSource, numSentences=100, nbest=100, stcksize=100,
-           weights=(1, 1, 1, 1), rerankWeights=(0.2, 0.2, 0.2, 0.2, 0.2)):
+           weights=(1, 1, 1, 1), rerankWeights=(0.2, 0.2, 0.2, 0.2, 0.2),
+           tm=None, lm=None):
     '''
     returns n-best translations from each of the specified sentences
     '''
 
-    tm = models.TM(opts.tm, opts.k)
-    lm = models.LM(opts.lm)
+    if tm is None:
+        tm = models.TM(opts.tm, opts.k)
+    if lm is None:
+        lm = models.LM(opts.lm)
+
     french = [tuple(line.strip().split())
               for line in open(frenchSource).readlines()[:numSentences]]
 
